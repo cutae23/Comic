@@ -105,27 +105,148 @@ export default function App() {
     setIsGeneratingStoryboard(true);
     setAlertInfo(null);
     try {
-      const response = await fetch('/api/generate-storyboard', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-gemini-key': localStorage.getItem('gemini_api_key') || '',
-        },
-        body: JSON.stringify({
-          storyText,
-          genre,
-          style,
-          numPanels,
-          customCharacters
-        })
-      });
+      let storyboardData: any = null;
+      const userKey = localStorage.getItem('gemini_api_key') || '';
+      let usedDirectClient = false;
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || errData.details || "스토리보드 생성 실패");
+      if (userKey) {
+        console.log("Using direct client-side Gemini API call for Storyboard Generation...");
+        try {
+          const sysPrompt = `You are an expert webtoon/comic storyboard writer.
+Your job is to analyze the user's provided story text and decompose/outline it into a highly professional, dramatic, and logical manga storyboard comprising EXACTLY ${numPanels} consecutive, sequential panels (cuts).
+Do not generate fewer than ${numPanels} panels. The length of the 'panels' array MUST be exactly ${numPanels}.
+
+Follow these guidelines for structured generation:
+1. **Title**: Devise a creative, high-impact Korean title for the comic.
+2. **Description**: Summarize the 16+ cut story arc neatly in Korean (1-2 sentences).
+3. **Style Summary**: Summarize the artistic direction of the style in Korean based on style: [${style}]. (e.g. "샤프한 선과 화려한 네온 컬러가 강조된 현대 웹툰 스타일").
+4. **Characters**: Extract up to 4 major characters and describe them.
+   - You MUST identify the correct gender (male vs. female) of each character. From the Korean text, words like "청년", "그", "소년", "남자", "아저씨", "할아버지" are strictly MALE, while "처녀", "그녀", "소녀", "여자", "아가씨", "할머니" are strictly FEMALE.
+   - For each character, produce a highly consistent 'visualDescription' in English (e.g., "handsome 23-year old young man, male, neat short dark hair, masculine jawline, determined expression, black jacket, manga webtoon style, strictly male with NO feminine features"). Ensure to explicitly state "male", "young man", "short haircut", etc., for male characters so the AI image generator never misrepresents them as women.
+5. **Panels**: Outline exactly ${numPanels} panels. Each panel must have:
+   - 'panelNumber': Sequential index, starting from 1 up to ${numPanels}.
+   - 'sceneDescription': Visual illustration guideline of the scene in Korean.
+   - 'speaker': The character speaking (e.g. "철수", "민우", "나레이션", "해설")
+   - 'dialogue': Speech bubble content in Korean. Keep it conversational, emotional, and succinct.
+   - 'narration': The contextual storytelling narration in Korean (displays on top/bottom of panel).
+   - 'soundEffect': Fun Korean onomatopoeia badge (e.g. "슥-", "쾅!", "스우우우", "쿵!"). Use empty string if none.
+   - 'bgMusicMood': Suggested ambient background sound or music (in Korean).
+   - 'imagePrompt': Detailed, photorealistic/stylized ENGLISH text-to-image prompt. Important: Embed the english 'visualDescription' of characters directly into the prompt (do not just use names like "Cheolsu", write "the 15-year old schooler with messy dark hair, wearing green jacket...").
+     Incorporate background elements, camera shot type (e.g., 'close-up shot', 'low-angle shot', 'establishing dynamic shot', 'side-profile extreme close-up'), lighting (e.g., 'dramatic cinematic lighting', 'soft warm sunset glow'), color grading, and style modifiers reflecting the requested comic style: [${style}]. Append style suffixes to make the rendering high fidelity. (e.g. "clean lines, vibrant colors, comic art style, detailed digital webtoon drawing").
+
+Be creative. Make sure the comic sequence has a robust story arc:
+- Cut 1-4: Introduction & hook (기)
+- Cut 5-8: Development & problem rising (승)
+- Cut 9-13: Main Climax & high emotion/action (전)
+- Cut 14-16+: Resolution & satisfying ending (결)`;
+
+          const userMessage = `Create a detailed sequential storyboard with exactly ${numPanels} panels.
+User's Story: ${storyText}
+Comic Genre: ${genre}
+Artistic Style: ${style}
+Current Requested Panel Count: ${numPanels}
+Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacters) : 'None'}`;
+
+          const requestBody = {
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            systemInstruction: { parts: [{ text: sysPrompt }] },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  title: { type: 'STRING', description: "Korean title of the comic strip" },
+                  description: { type: 'STRING', description: "A summary of the comic story in Korean" },
+                  genre: { type: 'STRING' },
+                  styleSummary: { type: 'STRING', description: "Brief visual style description in Korean" },
+                  characters: {
+                    type: 'ARRAY',
+                    items: {
+                      type: 'OBJECT',
+                      properties: {
+                        name: { type: 'STRING', description: "Character Korean Name" },
+                        visualDescription: { type: 'STRING', description: "English prompt snippet describing visual attributes for consistency" }
+                      },
+                      required: ["name", "visualDescription"]
+                    }
+                  },
+                  panels: {
+                    type: 'ARRAY',
+                    description: `Strictly array of exactly ${numPanels} panels`,
+                    items: {
+                      type: 'OBJECT',
+                      properties: {
+                        panelNumber: { type: 'INTEGER' },
+                        sceneDescription: { type: 'STRING', description: "Detailed scene visual action in Korean" },
+                        speaker: { type: 'STRING', description: "Speaking character or '해설' / '나레이션'" },
+                        dialogue: { type: 'STRING', description: "Speech bubble dialogue in Korean (can be empty string)" },
+                        narration: { type: 'STRING', description: "Context narration in Korean (can be empty string)" },
+                        soundEffect: { type: 'STRING', description: "Korean sound badge (e.g., '쾅!', '두근두근', '스윽') or empty string" },
+                        bgMusicMood: { type: 'STRING', description: "Theme music mood in Korean (e.g. 긴박한 현악 피치카토)" },
+                        imagePrompt: { type: 'STRING', description: "Intense English prompt with specific character features, camera angle, and style tags. Prompt MUST NOT refer to names of characters directly. Always substitute names with their physical visual attributes." }
+                      },
+                      required: [
+                        "panelNumber",
+                        "sceneDescription",
+                        "speaker",
+                        "dialogue",
+                        "narration",
+                        "soundEffect",
+                        "bgMusicMood",
+                        "imagePrompt"
+                      ]
+                    }
+                  }
+                },
+                required: ["title", "description", "genre", "styleSummary", "characters", "panels"]
+              }
+            }
+          };
+
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${userKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (res.ok) {
+            const resData = await res.json();
+            const jsonText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (jsonText) {
+              storyboardData = JSON.parse(jsonText.trim());
+              usedDirectClient = true;
+            }
+          } else {
+            console.warn("Direct client planning failed. Fallback to server...");
+          }
+        } catch (directErr) {
+          console.warn("Direct client storyboard planning failed:", directErr);
+        }
       }
 
-      const storyboardData = await response.json();
+      if (!usedDirectClient) {
+        const response = await fetch('/api/generate-storyboard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-gemini-key': userKey,
+          },
+          body: JSON.stringify({
+            storyText,
+            genre,
+            style,
+            numPanels,
+            customCharacters
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || errData.details || "스토리보드 생성 실패");
+        }
+
+        storyboardData = await response.json();
+      }
       
       const newComic: ComicBook = {
         id: `comic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -160,7 +281,7 @@ export default function App() {
       console.error(error);
       setAlertInfo({
         type: 'error',
-        message: `기획에 실패했습니다: ${error.message}`
+        message: `기획에 실패했습니다: ${error.message}. 만약 Vercel 같은 서버리스 환경에 배포된 버전이라면 상단 "Gemini API 개인키 설정"에 본인의 고유 무료 API 키를 등록해주셔야 시간 초과 에러 없이 브라우저 고속 직연결로 100% 정상 활성화됩니다!`
       });
     } finally {
       setIsGeneratingStoryboard(false);
@@ -220,7 +341,66 @@ export default function App() {
       const storedComic = { ...updatedComic, panels: finalPanels };
       saveComicsToStorage(comics.map(c => c.id === activeComic.id ? storedComic : c));
     } catch (err: any) {
-      console.error(err);
+      console.warn("Server generation failed. Attempting pure browser-side Pollinations AI Flu/Anime drawing fallback to ensure success...", err);
+      try {
+        const prompt = targetPanel.imagePrompt;
+        const sceneDescription = targetPanel.sceneDescription;
+        const style = activeComic.style;
+        const panelNumber = targetPanel.panelNumber;
+
+        let styledPrompt = prompt;
+        let pollinationModel = "flux";
+        const lowerStyle = (style || "").toLowerCase();
+
+        if (lowerStyle.includes("webtoon") || lowerStyle.includes("웹툰")) {
+          styledPrompt = `Korean webtoon comic panel, fine digital line art, vibrant webtoon sketch, rich colors, soft modern anime shading, anime manga webtoon screenshot style, detailed background scenery: ${prompt || sceneDescription}`;
+          pollinationModel = "flux";
+        } else if (lowerStyle.includes("manga") || lowerStyle.includes("망가") || lowerStyle.includes("일본 만화")) {
+          styledPrompt = `Japanese manga page panel, high dynamic ink line art, classic black and white comic illustration, detailed vintage screentone patterns, expressive anime facial features, master manga artist work: ${prompt || sceneDescription}`;
+          pollinationModel = "flux-anime";
+        } else if (lowerStyle.includes("retro") || lowerStyle.includes("classic") || lowerStyle.includes("레트로") || lowerStyle.includes("미국 만화")) {
+          styledPrompt = `Vintage 1970s Marvel superhero comic book panel style print drawing, bold hand-drawn ink outlines, retro halftone printing dots pattern, aged vintage CMYK comic ink colors, classic golden comic look: ${prompt || sceneDescription}`;
+          pollinationModel = "flux";
+        } else if (lowerStyle.includes("watercolor") || lowerStyle.includes("수채화")) {
+          styledPrompt = `Beautiful watercolor children story book illustration scene, whimsical soft pastel paint bleeding, cozy pencil drawing sketch, warm colors, charming children animation background: ${prompt || sceneDescription}`;
+          pollinationModel = "flux";
+        } else if (lowerStyle.includes("disney") || lowerStyle.includes("pixar") || lowerStyle.includes("애니메이션") || lowerStyle.includes("3d")) {
+          styledPrompt = `Modern 3D animated cartoon capture, Pixar Disney style cute rendering illustration, charming expressive design, detailed ambient subsurface scattering lighting, high fidelity CGI: ${prompt || sceneDescription}`;
+          pollinationModel = "flux-3d";
+        } else {
+          styledPrompt = `High quality graphic novel comic book block panel illustration, vibrant flat colors, crisp dark comic outlines, gorgeous design composition: ${prompt || sceneDescription}`;
+          pollinationModel = "flux";
+        }
+
+        const randomSeed = Math.floor(Math.random() * 99999999) + 24681;
+        const pollinationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}?width=512&height=512&model=${pollinationModel}&seed=${randomSeed}&nologo=true&private=true`;
+
+        const fallbackResponse = await fetch(pollinationUrl);
+        if (fallbackResponse.ok) {
+          const blob = await fallbackResponse.blob();
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+
+          const finalPanels = [...updatedComic.panels];
+          finalPanels[panelIndex] = {
+            ...finalPanels[panelIndex],
+            imageUrl: base64Data,
+            isGenerating: false,
+            isFailed: false,
+            method: `pollinations-${pollinationModel}-client-fallback`
+          };
+
+          const storedComic = { ...updatedComic, panels: finalPanels };
+          saveComicsToStorage(comics.map(c => c.id === activeComic.id ? storedComic : c));
+          return;
+        }
+      } catch (fallbackErr: any) {
+        console.error("Browser direct Pollinations AI drawing fallback failed too:", fallbackErr);
+      }
+
       const finalPanels = [...updatedComic.panels];
       finalPanels[panelIndex] = {
         ...finalPanels[panelIndex],

@@ -130,12 +130,72 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
 
         // Helper to POST to PDF API
         const sendParseRequest = async (payload: { pdfData?: string; rawText?: string }) => {
+          const userKey = localStorage.getItem('gemini_api_key') || '';
+          if (userKey) {
+            console.log("Using direct client-side Gemini API call for PDF parsing...");
+            try {
+              let requestBody: any = {};
+              if (payload.rawText) {
+                requestBody = {
+                  contents: {
+                    parts: [
+                      {
+                        text: `다음은 PDF 파일에서 자동으로 추출된 원문 텍스트입니다:\n\n${payload.rawText.slice(0, 80000)}\n\n이 텍스트 내용 전체를 완벽 분석하여, 16컷 이상의 만화 스토리보드로 기획하기에 가장 적합한 완성도 높은 하나의 연속적이고 흐름이 자연스러운 한국어 줄거리 형식으로 완벽히 전사 및 재구성해 주세요. 다른 부가적 코멘트나 설명(예: '줄거리를 재구성했습니다')은 일체 달지 말고, 오직 새롭게 정제/재구성된 줄거리 본문 내용만을 한국어로 반환해 주세요.`
+                      }
+                    ]
+                  }
+                };
+              } else if (payload.pdfData) {
+                requestBody = {
+                  contents: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: payload.pdfData,
+                          mimeType: "application/pdf"
+                        }
+                      },
+                      {
+                        text: "이 PDF 문서 안의 이야기, 소설 줄거리, 시나리오, 동크 스크립트 또는 기획 문서를 분석하여, 16컷 이상의 만화 스토리보드로 기획하기에 가장 적합한 완성도 높은 하나의 연속적인 한국어 줄거리 형식으로 완벽히 전사 및 재구성해 주세요. 다른 설명적 코멘트(예: '추출된 이야기입니다')는 일절 하지 말고, 오직 새롭게 전사/재구성된 줄거리 본문 내용만을 한국어로 반환해 주시기 바랍니다."
+                      }
+                    ]
+                  }
+                };
+              }
+
+              const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${userKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+              });
+
+              if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Google API returned ${res.status}: ${errText}`);
+              }
+
+              const data = await res.json();
+              const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              
+              if (extractedText) {
+                setStoryText(extractedText.trim());
+                setSelectedSampleId(null);
+                setIsParsingPdf(false);
+                return;
+              } else {
+                throw new Error("Gemini가 전사 텍스트를 반환하지 않았습니다.");
+              }
+            } catch (error: any) {
+              console.error("Direct browser PDF parse failed, trying backend server fallback...", error);
+            }
+          }
+
           try {
             const res = await fetch('/api/parse-pdf', {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
-                'x-gemini-key': localStorage.getItem('gemini_api_key') || '',
+                'x-gemini-key': userKey,
               },
               body: JSON.stringify(payload),
             });
@@ -148,7 +208,7 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
             }
           } catch (error) {
             console.error(error);
-            alert('PDF 파일을 분석하는 중 서버와의 연결 오류가 발생했습니다.');
+            alert('PDF 파일을 분석하는 중 서버와의 연결 오류가 발생했습니다. 화면 상단의 "Gemini API 개인키 설정" 버튼을 누르신 후 본인의 무료 API Key [AIzaSy...]를 등록하시면, 가혹한 서버 트래픽 제한이나 연결 에러 우회용으로 브라우저에서 구글 서버로 직접 전송되어 100% 고속 파싱 완벽 성공합니다!');
           } finally {
             setIsParsingPdf(false);
           }
