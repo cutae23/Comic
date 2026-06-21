@@ -211,9 +211,29 @@ async function startServer() {
   // API Route: Extract story text from PDF documents using Gemini Multimodal
   app.post("/api/parse-pdf", async (req, res) => {
     try {
-      const { pdfData } = req.body;
+      const { pdfData, rawText } = req.body;
+
+      if (rawText && typeof rawText === "string" && rawText.trim().length > 0) {
+        console.log("Analyzing client-parsed PDF raw text using Gemini...");
+        const activeAi = getAiInstance(req);
+        
+        const response = await activeAi.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: {
+            parts: [
+              {
+                text: `다음은 PDF 파일에서 자동으로 추출된 원문 텍스트입니다:\n\n${rawText.slice(0, 80000)}\n\n이 텍스트 내용 전체를 완벽 분석하여, 16컷 이상의 만화 스토리보드로 기획하기에 가장 적합한 완성도 높은 하나의 연속적이고 흐름이 자연스러운 한국어 줄거리 형식으로 완벽히 전사 및 재구성해 주세요. 다른 부가적 코멘트나 설명(예: '줄거리를 재구성했습니다')은 일체 달지 말고, 오직 새롭게 정제/재구성된 줄거리 본문 내용만을 한국어로 반환해 주세요.`
+              }
+            ]
+          }
+        });
+
+        const extractedText = response.text || "";
+        return res.json({ text: extractedText.trim() });
+      }
+
       if (!pdfData) {
-        return res.status(400).json({ error: "PDF 파일 데이터가 없습니다." });
+        return res.status(400).json({ error: "PDF 파일 데이터 또는 텍스트가 전달되지 않았습니다." });
       }
 
       console.log("Extracting story text from uploaded PDF using Gemini multimodal intelligence...");

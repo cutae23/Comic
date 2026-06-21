@@ -29,6 +29,43 @@ interface StorySettingsProps {
   isLoading: boolean;
 }
 
+// Client-side PDF Parser Helpers (Bypasses Vercel's 4.5MB upload limits and 10s gateway timeouts)
+const loadPdfJs = async (): Promise<any> => {
+  if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+    script.onload = () => {
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+      resolve(pdfjsLib);
+    };
+    script.onerror = () => {
+      reject(new Error('PDF 파서 다운로드에 실패했습니다.'));
+    };
+    document.head.appendChild(script);
+  });
+};
+
+const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  const pdfjsLib = await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  let fullText = '';
+  // Limit parsing to top 40 pages to stay within token budgets and maintain lightning-fast UI speed
+  const maxPages = Math.min(pdf.numPages, 40);
+  for (let i = 1; i <= maxPages; i++) {
+    try {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
+    } catch (e) {
+      console.warn(`[PDF Parser] ${i}페이지 텍스트 추출 중 오류가 발생했으나 건너뜁니다:`, e);
+    }
+  }
+  return fullText.trim();
+};
+
 export default function StorySettings({ onGenerate, isLoading }: StorySettingsProps) {
   const [storyText, setStoryText] = useState('');
   const [genre, setGenre] = useState('판타지 / 모험');
@@ -66,37 +103,80 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
     if (!file) return;
 
     if (file.name.toLowerCase().endsWith('.pdf')) {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const result = e.target?.result as string;
-        if (!result) return;
-        const base64Data = result.split(',')[1];
+      setIsParsingPdf(true);
 
-        setIsParsingPdf(true);
-        try {
-          const res = await fetch('/api/parse-pdf', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-gemini-key': localStorage.getItem('gemini_api_key') || '',
-            },
-            body: JSON.stringify({ pdfData: base64Data }),
-          });
-          const data = await res.json();
-          if (data.text) {
-            setStoryText(data.text);
-            setSelectedSampleId(null);
-          } else {
-            alert(`PDF 분석 실패: ${data.error || '알 수 없는 오류가 발생했습니다.'}`);
-          }
-        } catch (error) {
-          console.error(error);
-          alert('PDF 파일을 분석하는 중 서버와의 연결 오류가 발생했습니다.');
-        } finally {
+      const arrayBufferReader = new FileReader();
+      
+      arrayBufferReader.onload = async (e) => {
+        const arrayBuffer = e.target?.result as ArrayBuffer;
+        if (!arrayBuffer) {
           setIsParsingPdf(false);
+          alert('PDF 파일을 불려오는 과정에서 리더가 응답을 반환하지 않았습니다.');
+          return;
+        }
+
+        let extractedPdfText = '';
+        let clientParseSuccessful = false;
+
+        try {
+          console.log("Starting client-side text extraction for", file.name);
+          extractedPdfText = await extractTextFromPdf(arrayBuffer);
+          if (extractedPdfText && extractedPdfText.trim().length > 10) {
+            clientParseSuccessful = true;
+          }
+        } catch (err) {
+          console.warn("Client-side PDF extraction failed, will attempt fallback base64 API mode...", err);
+        }
+
+        // Helper to POST to PDF API
+        const sendParseRequest = async (payload: { pdfData?: string; rawText?: string }) => {
+          try {
+            const res = await fetch('/api/parse-pdf', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-gemini-key': localStorage.getItem('gemini_api_key') || '',
+              },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.text) {
+              setStoryText(data.text);
+              setSelectedSampleId(null);
+            } else {
+              alert(`PDF 분석 실패: ${data.error || '알 수 없는 오류가 발생했습니다.'}`);
+            }
+          } catch (error) {
+            console.error(error);
+            alert('PDF 파일을 분석하는 중 서버와의 연결 오류가 발생했습니다.');
+          } finally {
+            setIsParsingPdf(false);
+          }
+        };
+
+        // If client-side parse succeeded, send the light-weight rawText to Vercel/Serverless backend (Safe from 4.5MB Vercel Body limit!)
+        if (clientParseSuccessful) {
+          console.log("Client-side PDF parser extracted text successfully. Byte-size:", extractedPdfText.length);
+          await sendParseRequest({ rawText: extractedPdfText });
+        } else {
+          // Fallback to old base64 binary POST (Will work in local boxes, or for smaller PDFs on Vercel)
+          console.log("Falling back to full binary base64 parsing...");
+          const base64Reader = new FileReader();
+          base64Reader.onload = async (ev) => {
+            const dataUrl = ev.target?.result as string;
+            if (!dataUrl) {
+              alert("PDF 로드 실패: 파일을 읽을 수 없습니다.");
+              setIsParsingPdf(false);
+              return;
+            }
+            const base64Data = dataUrl.split(',')[1];
+            await sendParseRequest({ pdfData: base64Data });
+          };
+          base64Reader.readAsDataURL(file);
         }
       };
-      reader.readAsDataURL(file);
+
+      arrayBufferReader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();
       reader.onload = (e) => {
