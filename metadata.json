@@ -1,0 +1,6 @@
+{
+  "name": "16-Cut Comic Generator",
+  "description": "글이나 문서를 업로드하여 16컷 이상의 고품질 만화 스토리보드와 일러스트를 자동으로 계획하고 생성해주는 인공지능 만화 창작 서비스입니다.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
