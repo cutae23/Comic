@@ -608,7 +608,7 @@ Create an absolute visual masterpiece.`;
 
   // Serve static files in production or hook Vite in development
   async function bootstrap() {
-    if (process.env.NODE_ENV !== "production") {
+    if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
