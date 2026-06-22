@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 
 // Load environment variables
 dotenv.config();
@@ -610,18 +609,21 @@ Create an absolute visual masterpiece.`;
   // Serve static files in production or hook Vite in development
   async function bootstrap() {
     if (process.env.NODE_ENV !== "production") {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
       });
       app.use(vite.middlewares);
     } else {
-      // In production, serve build artifacts
-      const distPath = path.join(process.cwd(), "dist");
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
-      });
+      if (!process.env.VERCEL) {
+        // In clean production (eg Container), serve build artifacts
+        const distPath = path.join(process.cwd(), "dist");
+        app.use(express.static(distPath));
+        app.get("*", (req, res) => {
+          res.sendFile(path.join(distPath, "index.html"));
+        });
+      }
     }
 
     if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
