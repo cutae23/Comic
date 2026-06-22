@@ -190,16 +190,6 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
     });
   };
 
-  // Keep a global default client for logging or internal functions if absolutely required
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY || "dummy_key_if_none_present",
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
-
   // API Route: Extract story text from PDF documents using Gemini Multimodal
   app.post("/api/parse-pdf", async (req, res) => {
     try {
@@ -210,7 +200,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
         const activeAi = getAiInstance(req);
         
         const response = await activeAi.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: {
             parts: [
               {
@@ -232,7 +222,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
       const activeAi = getAiInstance(req);
       const response = await activeAi.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: {
           parts: [
             {
@@ -301,7 +291,15 @@ Be creative. Make sure the comic sequence has a robust story arc:
 - Cut 1-4: Introduction & hook (기)
 - Cut 5-8: Development & problem rising (승)
 - Cut 9-13: Main Climax & high emotion/action (전)
-- Cut 14-16+: Resolution & satisfying ending (결)`;
+- Cut 14-16+: Resolution & satisfying ending (결)
+
+CRITICAL TIMEOUT AVOIDANCE RULE:
+Keep all generated text fields extremely short, succinct, and compact to minimize output token count and guarantee fast execution.
+- Ensure 'visualDescription' of characters is exactly 1-2 sentences of clean keyword-based descriptions.
+- 'sceneDescription' must be exactly 1 short sentence in Korean.
+- 'dialogue' and 'narration' must be exactly 1 short sentence or phrase per panel (under 15 words).
+- 'imagePrompt' must be a concise list of high-impact visual tags (no fluff).
+Do not generate large paragraphs of filler text.`;
 
       const userMessage = `Create a detailed sequential storyboard with exactly ${panelCount} panels.
       User's Story: ${storyText}
@@ -312,7 +310,7 @@ Be creative. Make sure the comic sequence has a robust story arc:
 
       const activeAi = getAiInstance(req);
       const response = await activeAi.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: [
           { role: "user", parts: [{ text: userMessage }] }
         ],
@@ -541,7 +539,7 @@ Rules:
 Create an absolute visual masterpiece.`;
 
         const response = await activeAi.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: [
             {
               role: "user",
@@ -609,7 +607,7 @@ Create an absolute visual masterpiece.`;
   // Serve static files in production or hook Vite in development
   async function bootstrap() {
     if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-      const { createServer: createViteServer } = await import("vite");
+      const { createServer: createViteServer } = await eval('import("vite")');
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
