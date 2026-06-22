@@ -32,32 +32,7 @@ export default function App() {
   // API error banner states
   const [alertInfo, setAlertInfo] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null);
 
-  // Gemini API manual key states
-  const [localGeminiKey, setLocalGeminiKey] = useState<string>('');
-  const [showApiKeyPanel, setShowApiKeyPanel] = useState<boolean>(false);
-  const [apiKeyInputBuffer, setApiKeyInputBuffer] = useState<string>('');
 
-  // Hydrate custom API key from localStorage on mount
-  useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key') || '';
-    setLocalGeminiKey(savedKey);
-    setApiKeyInputBuffer(savedKey);
-  }, []);
-
-  const handleSaveApiKey = (key: string) => {
-    const trimmed = key.trim();
-    localStorage.setItem('gemini_api_key', trimmed);
-    setLocalGeminiKey(trimmed);
-    
-    setAlertInfo({
-      type: 'success',
-      message: trimmed 
-        ? "🔑 Gemini API 개인 전용 키 등록에 성공했습니다! 이제부터 모든 인공지능 기획 및 작화에 회원님의 무료 할당량이 안전하게 적용됩니다."
-        : "🔑 Gemini API 개인 키가 정상적으로 제거되었습니다. 이제부터는 서버가 제공하는 기본 시제품용 공용 키가 사용됩니다."
-    });
-    
-    setShowApiKeyPanel(false);
-  };
 
   // Load saved comics from localStorage on mount
   useEffect(() => {
@@ -105,148 +80,26 @@ export default function App() {
     setIsGeneratingStoryboard(true);
     setAlertInfo(null);
     try {
-      let storyboardData: any = null;
-      const userKey = localStorage.getItem('gemini_api_key') || '';
-      let usedDirectClient = false;
+      const response = await fetch('/api/generate-storyboard', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storyText,
+          genre,
+          style,
+          numPanels,
+          customCharacters
+        })
+      });
 
-      if (userKey) {
-        console.log("Using direct client-side Gemini API call for Storyboard Generation...");
-        try {
-          const sysPrompt = `You are an expert webtoon/comic storyboard writer.
-Your job is to analyze the user's provided story text and decompose/outline it into a highly professional, dramatic, and logical manga storyboard comprising EXACTLY ${numPanels} consecutive, sequential panels (cuts).
-Do not generate fewer than ${numPanels} panels. The length of the 'panels' array MUST be exactly ${numPanels}.
-
-Follow these guidelines for structured generation:
-1. **Title**: Devise a creative, high-impact Korean title for the comic.
-2. **Description**: Summarize the 16+ cut story arc neatly in Korean (1-2 sentences).
-3. **Style Summary**: Summarize the artistic direction of the style in Korean based on style: [${style}]. (e.g. "샤프한 선과 화려한 네온 컬러가 강조된 현대 웹툰 스타일").
-4. **Characters**: Extract up to 4 major characters and describe them.
-   - You MUST identify the correct gender (male vs. female) of each character. From the Korean text, words like "청년", "그", "소년", "남자", "아저씨", "할아버지" are strictly MALE, while "처녀", "그녀", "소녀", "여자", "아가씨", "할머니" are strictly FEMALE.
-   - For each character, produce a highly consistent 'visualDescription' in English (e.g., "handsome 23-year old young man, male, neat short dark hair, masculine jawline, determined expression, black jacket, manga webtoon style, strictly male with NO feminine features"). Ensure to explicitly state "male", "young man", "short haircut", etc., for male characters so the AI image generator never misrepresents them as women.
-5. **Panels**: Outline exactly ${numPanels} panels. Each panel must have:
-   - 'panelNumber': Sequential index, starting from 1 up to ${numPanels}.
-   - 'sceneDescription': Visual illustration guideline of the scene in Korean.
-   - 'speaker': The character speaking (e.g. "철수", "민우", "나레이션", "해설")
-   - 'dialogue': Speech bubble content in Korean. Keep it conversational, emotional, and succinct.
-   - 'narration': The contextual storytelling narration in Korean (displays on top/bottom of panel).
-   - 'soundEffect': Fun Korean onomatopoeia badge (e.g. "슥-", "쾅!", "스우우우", "쿵!"). Use empty string if none.
-   - 'bgMusicMood': Suggested ambient background sound or music (in Korean).
-   - 'imagePrompt': Detailed, photorealistic/stylized ENGLISH text-to-image prompt. Important: Embed the english 'visualDescription' of characters directly into the prompt (do not just use names like "Cheolsu", write "the 15-year old schooler with messy dark hair, wearing green jacket...").
-     Incorporate background elements, camera shot type (e.g., 'close-up shot', 'low-angle shot', 'establishing dynamic shot', 'side-profile extreme close-up'), lighting (e.g., 'dramatic cinematic lighting', 'soft warm sunset glow'), color grading, and style modifiers reflecting the requested comic style: [${style}]. Append style suffixes to make the rendering high fidelity. (e.g. "clean lines, vibrant colors, comic art style, detailed digital webtoon drawing").
-
-Be creative. Make sure the comic sequence has a robust story arc:
-- Cut 1-4: Introduction & hook (기)
-- Cut 5-8: Development & problem rising (승)
-- Cut 9-13: Main Climax & high emotion/action (전)
-- Cut 14-16+: Resolution & satisfying ending (결)`;
-
-          const userMessage = `Create a detailed sequential storyboard with exactly ${numPanels} panels.
-User's Story: ${storyText}
-Comic Genre: ${genre}
-Artistic Style: ${style}
-Current Requested Panel Count: ${numPanels}
-Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacters) : 'None'}`;
-
-          const requestBody = {
-            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-            systemInstruction: { parts: [{ text: sysPrompt }] },
-            generationConfig: {
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'OBJECT',
-                properties: {
-                  title: { type: 'STRING', description: "Korean title of the comic strip" },
-                  description: { type: 'STRING', description: "A summary of the comic story in Korean" },
-                  genre: { type: 'STRING' },
-                  styleSummary: { type: 'STRING', description: "Brief visual style description in Korean" },
-                  characters: {
-                    type: 'ARRAY',
-                    items: {
-                      type: 'OBJECT',
-                      properties: {
-                        name: { type: 'STRING', description: "Character Korean Name" },
-                        visualDescription: { type: 'STRING', description: "English prompt snippet describing visual attributes for consistency" }
-                      },
-                      required: ["name", "visualDescription"]
-                    }
-                  },
-                  panels: {
-                    type: 'ARRAY',
-                    description: `Strictly array of exactly ${numPanels} panels`,
-                    items: {
-                      type: 'OBJECT',
-                      properties: {
-                        panelNumber: { type: 'INTEGER' },
-                        sceneDescription: { type: 'STRING', description: "Detailed scene visual action in Korean" },
-                        speaker: { type: 'STRING', description: "Speaking character or '해설' / '나레이션'" },
-                        dialogue: { type: 'STRING', description: "Speech bubble dialogue in Korean (can be empty string)" },
-                        narration: { type: 'STRING', description: "Context narration in Korean (can be empty string)" },
-                        soundEffect: { type: 'STRING', description: "Korean sound badge (e.g., '쾅!', '두근두근', '스윽') or empty string" },
-                        bgMusicMood: { type: 'STRING', description: "Theme music mood in Korean (e.g. 긴박한 현악 피치카토)" },
-                        imagePrompt: { type: 'STRING', description: "Intense English prompt with specific character features, camera angle, and style tags. Prompt MUST NOT refer to names of characters directly. Always substitute names with their physical visual attributes." }
-                      },
-                      required: [
-                        "panelNumber",
-                        "sceneDescription",
-                        "speaker",
-                        "dialogue",
-                        "narration",
-                        "soundEffect",
-                        "bgMusicMood",
-                        "imagePrompt"
-                      ]
-                    }
-                  }
-                },
-                required: ["title", "description", "genre", "styleSummary", "characters", "panels"]
-              }
-            }
-          };
-
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${userKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (res.ok) {
-            const resData = await res.json();
-            const jsonText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (jsonText) {
-              storyboardData = JSON.parse(jsonText.trim());
-              usedDirectClient = true;
-            }
-          } else {
-            console.warn("Direct client planning failed. Fallback to server...");
-          }
-        } catch (directErr) {
-          console.warn("Direct client storyboard planning failed:", directErr);
-        }
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || errData.details || "스토리보드 생성 실패");
       }
 
-      if (!usedDirectClient) {
-        const response = await fetch('/api/generate-storyboard', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-gemini-key': userKey,
-          },
-          body: JSON.stringify({
-            storyText,
-            genre,
-            style,
-            numPanels,
-            customCharacters
-          })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || errData.details || "스토리보드 생성 실패");
-        }
-
-        storyboardData = await response.json();
-      }
+      const storyboardData = await response.json();
       
       const newComic: ComicBook = {
         id: `comic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -281,7 +134,7 @@ Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacter
       console.error(error);
       setAlertInfo({
         type: 'error',
-        message: `기획에 실패했습니다: ${error.message}. 만약 Vercel 같은 서버리스 환경에 배포된 버전이라면 상단 "Gemini API 개인키 설정"에 본인의 고유 무료 API 키를 등록해주셔야 시간 초과 에러 없이 브라우저 고속 직연결로 100% 정상 활성화됩니다!`
+        message: `기획에 실패했습니다: ${error.message}`
       });
     } finally {
       setIsGeneratingStoryboard(false);
@@ -306,7 +159,6 @@ Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacter
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-gemini-key': localStorage.getItem('gemini_api_key') || '',
         },
         body: JSON.stringify({
           prompt: targetPanel.imagePrompt,
@@ -533,21 +385,6 @@ Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacter
               </div>
             )}
 
-            {/* Custom Gemini API Key Toggle Button */}
-            <button
-              onClick={() => {
-                setShowApiKeyPanel(!showApiKeyPanel);
-                setApiKeyInputBuffer(localGeminiKey);
-              }}
-              className={`px-4 py-2 border-2 border-black font-sans text-[11px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] hover:bg-[#F9F7F2] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(20,20,20,1)] ${
-                localGeminiKey 
-                  ? 'bg-emerald-55 text-emerald-900 border-emerald-600 shadow-[3px_3px_0px_0px_rgba(16,185,129,0.3)]' 
-                  : 'bg-white text-black'
-              }`}
-            >
-              <Key className="w-3.5 h-3.5" />
-              {localGeminiKey ? 'Gemini API 키 등록됨' : 'Gemini API 개인키 설정'}
-            </button>
           </div>
 
         </div>
@@ -555,105 +392,6 @@ Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacter
 
       {/* Main body content container with editorial background */}
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-8 flex-1 space-y-8 bg-[#FDFCFB]">
-
-        {/* Gemini API Key Configuration Panel */}
-        <AnimatePresence>
-          {showApiKeyPanel && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-[#FAF9F5] border-2 border-black p-6 md:p-8 shadow-[6px_6px_0px_0px_rgba(20,20,20,1)] relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 bg-black text-white px-3 py-1 font-sans text-[9px] font-black uppercase tracking-widest">
-                API SECURITY
-              </div>
-
-              <div className="flex items-start gap-4 mb-6">
-                <div className="bg-black text-white p-3 border border-black shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] flex-shrink-0">
-                  <Key className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-serif font-black text-lg md:text-xl uppercase tracking-tight">
-                    구글 Gemini API 개인 고유 Key 설정 & 등록
-                  </h3>
-                  <p className="font-sans text-xs text-gray-500 mt-1 uppercase tracking-wider font-bold">
-                    Personal Google AI Studio Studio Credentials Setup
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4 text-xs font-sans text-gray-700 leading-relaxed max-w-4xl">
-                <p>
-                  본 <strong>16컷 웹툰 콘티 메이커 (Ink & Canvas)</strong>는 시나리오 빌딩을 위해 구글의 차세대 초경량 AI 엔진인 <strong>Gemini 3.5 Flash</strong> 및 <strong>Imagen 3.0</strong> 드로잉을 사용하고 있습니다.
-                </p>
-                <div className="bg-white p-4 border border-black space-y-2 leading-relaxed">
-                  <p className="font-bold text-black flex items-center gap-1.5">
-                    <span className="text-emerald-600 font-bold">●</span> 구글 Gemini API는 무료인가요?
-                  </p>
-                  <p className="pl-4 text-gray-600">
-                    그렇습니다! 개인 창작 및 개발 용도라면 구글 AI 스튜디오(Google AI Studio)에서 발급받은 개인용 API 키에 대해 <strong>기본적으로 완전한 무료 플랜(Free Plan)</strong>을 지속 제공하고 있습니다.
-                  </p>
-                  
-                  <p className="font-bold text-black flex items-center gap-1.5 mt-2">
-                    <span className="text-emerald-600 font-bold">●</span> 내 API Key를 왜 사용해야 하나요?
-                  </p>
-                  <p className="pl-4 text-gray-600">
-                    서버에 탑재된 기본 시제품 테스트용 공용 키는 동시에 여러 유저가 기획하거나 작화를 대량으로 생성할 때 초당 호출 제한(Rate Limit)을 쉽게 초래합니다. <strong>본인의 고유 API Key를 등록하면 렉이나 밀림 현상 없이 신속하고 원활하게 무제한 제작이 가능해집니다.</strong> (빈 칸으로 둘 시, 자동으로 서버 소유 임시 공용 키로 자동 동작합니다)
-                  </p>
-
-                  <p className="font-bold text-black flex items-center gap-1.5 mt-2">
-                    <span className="text-emerald-600 font-bold">●</span> 1분 만에 API Key 쉽게 발급받는 절차
-                  </p>
-                  <p className="pl-4 text-gray-600">
-                    1. <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline font-bold hover:text-emerald-800">구글 AI 스튜디오 공식 웹사이트(aistudio.google.com)</a>에 일반 구글 계정으로 로그인합니다.<br/>
-                    2. 상단 혹은 왼편의 <span className="font-bold text-black">"Get API Key"</span> 버튼을 누릅니다.<br/>
-                    3. <span className="font-bold text-black">"Create API Key"</span>를 선별 수락한 뒤 발급된 긴 문자열(<span className="font-mono bg-gray-100 px-1 py-0.5 border border-gray-200">AIzaSy...</span>)을 바로 복사하여 하단 박스에 기입 후 저장을 적용해 주세요.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 border-t border-black pt-6">
-                <label className="block font-sans text-[11px] font-black uppercase tracking-widest text-black mb-2">
-                  본인의 구글 Gemini API Key (AIzaSy...)
-                </label>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <input
-                      type="password"
-                      value={apiKeyInputBuffer}
-                      onChange={(e) => setApiKeyInputBuffer(e.target.value)}
-                      placeholder={localGeminiKey ? '•••••••••••••••••••••••••••••••••••••••••• (개인 API 키 안전 저장 중)' : '구글 AI Studio에서 발급받은 API 키를 넣으세요 (AIzaSy...)'}
-                      className="w-full font-mono text-xs px-4 py-3 border-2 border-black focus:bg-[#FFFDF9] focus:outline-none transition-all placeholder:font-sans placeholder:text-gray-400"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleSaveApiKey(apiKeyInputBuffer)}
-                      className="px-6 py-2 bg-black hover:bg-neutral-800 text-white font-sans text-xs font-black uppercase tracking-wider transition-all border border-black shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] active:translate-y-0.5"
-                    >
-                      저장 및 즉시 적용
-                    </button>
-                    {localGeminiKey && (
-                      <button
-                        onClick={() => {
-                          setApiKeyInputBuffer('');
-                          handleSaveApiKey('');
-                        }}
-                        className="px-6 py-2 bg-white hover:bg-rose-50 text-rose-600 font-sans text-xs font-black uppercase tracking-wider transition-all border-2 border-rose-600 shadow-[2px_2px_0px_0px_rgba(225,29,72,0.15)] active:translate-y-0.5"
-                      >
-                        등록 해제
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="font-sans text-[9px] text-gray-400 mt-3 flex items-center gap-1.5 leading-relaxed">
-                  🛡️ 키 보안 서준: 사용자의 자산은 서버 데이터베이스나 클라우드 일체에 가공 전송되지 않으며, 귀하의 웹브라우저 안전 메모리(localStorage)에 한정 상주하여 매 호출 시 암호화 통로(SSL) 헤더로만 전달되므로 극도로 안전합니다.
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
         
         {/* API notification system alerts bar - Minimalist design */}
         <AnimatePresence>

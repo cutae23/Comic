@@ -174,18 +174,12 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-  // Helper to resolve Gemini client based on optional request headers
+  // Helper to resolve Gemini client based on secure server-side environment variables
   const getAiInstance = (req: express.Request) => {
-    const customHeader = req.headers["x-gemini-key"] || req.headers["X-Gemini-Key"] || req.headers["x-api-key"] || req.headers["X-Api-Key"];
-    const personalKey = typeof customHeader === "string" ? customHeader.trim() : null;
-    
-    // Fallback order:
-    // 1. User's personal key from headers
-    // 2. Server's process.env.GEMINI_API_KEY
-    const finalKey = personalKey || process.env.GEMINI_API_KEY;
+    const finalKey = process.env.GEMINI_API_KEY;
     
     if (!finalKey) {
-      throw new Error("GEMINI_API_KEY가 존재하지 않습니다. 화면 상단의 'Gemini API 개인키 설정'에서 본인의 API 키를 입력하거나 서버의 환경변수를 확인해주세요.");
+      throw new Error("서버 환경 변수에 GEMINI_API_KEY가 존재하지 않습니다. AI Studio의 Settings 또는 시스템 배포 대시보드(Vercel 등)에서 환경 변수(Environmental Variable)를 등록해 주시기 바랍니다.");
     }
     
     return new GoogleGenAI({
