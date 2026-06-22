@@ -94,12 +94,19 @@ export default function App() {
         })
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || errData.details || "스토리보드 생성 실패");
-      }
+      const contentType = response.headers.get("content-type");
+      let storyboardData: any;
 
-      const storyboardData = await response.json();
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || data.details || `서버 에러 (${response.status})`);
+        }
+        storyboardData = data;
+      } else {
+        const errText = await response.text();
+        throw new Error(`HTML/텍스트 응답 감지 (${response.status}). Vercel의 환경변수(Settings에서 GEMINI_API_KEY) 설정이 누락되었거나 배포 상태를 다시 확인해 주세요. 상세 내용: ${errText.slice(0, 100)}`);
+      }
       
       const newComic: ComicBook = {
         id: `comic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -172,11 +179,17 @@ export default function App() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error("HTTP connection error on generating image.");
+      const contentType = response.headers.get("content-type");
+      let rawData: any;
+      if (contentType && contentType.includes("application/json")) {
+        rawData = await response.json();
+        if (!response.ok) {
+          throw new Error(rawData.error || rawData.details || `이미지 생성 서버 오류 (${response.status})`);
+        }
+      } else {
+        const errText = await response.text();
+        throw new Error(`이미지 생성 실패 (${response.status}): ${errText.slice(0, 100)}`);
       }
-
-      const rawData = await response.json();
       
       // Update with newly acquired source imageUrl URL
       const finalPanels = [...updatedComic.panels];

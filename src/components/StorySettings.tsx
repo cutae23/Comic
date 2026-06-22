@@ -138,16 +138,27 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
               },
               body: JSON.stringify(payload),
             });
-            const data = await res.json();
-            if (data.text) {
-              setStoryText(data.text);
-              setSelectedSampleId(null);
+
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const data = await res.json();
+              if (res.ok) {
+                if (data.text) {
+                  setStoryText(data.text);
+                  setSelectedSampleId(null);
+                } else {
+                  alert(`PDF 분석 실패: ${data.error || '응답 텍스트가 비어있습니다.'}`);
+                }
+              } else {
+                alert(`PDF 분석 에러 (${res.status}): ${data.error || data.details || '알 수 없는 서버 에러'}`);
+              }
             } else {
-              alert(`PDF 분석 실패: ${data.error || '알 수 없는 오류가 발생했습니다.'}`);
+              const errText = await res.text();
+              throw new Error(`HTML/텍스트 응답 감지 (${res.status}): ${errText.slice(0, 100)}`);
             }
-          } catch (error) {
+          } catch (error: any) {
             console.error(error);
-            alert('PDF 파일을 분석하는 중 서버와의 연결 오류가 발생했습니다.');
+            alert(`PDF 파일을 분석하는 중 오류가 발생했습니다:\n${error.message || error}`);
           } finally {
             setIsParsingPdf(false);
           }

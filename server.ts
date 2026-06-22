@@ -166,13 +166,12 @@ function generateSvgPlaceholder(
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  // JSON request body parser
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// JSON request body parser
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // Helper to resolve Gemini client based on secure server-side environment variables
   const getAiInstance = (req: express.Request) => {
@@ -609,24 +608,31 @@ Create an absolute visual masterpiece.`;
   });
 
   // Serve static files in production or hook Vite in development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // In production, serve build artifacts
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  async function bootstrap() {
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      // In production, serve build artifacts
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`[16-Cut Comic Server] active on http://localhost:${PORT} in ${process.env.NODE_ENV || "development"} mode`);
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[16-Cut Comic Server] active on http://localhost:${PORT} in ${process.env.NODE_ENV || "development"} mode`);
+  bootstrap().catch(err => {
+    console.error("Failed to bootstrap server:", err);
   });
-}
 
-startServer();
+  export default app;
