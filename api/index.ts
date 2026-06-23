@@ -200,7 +200,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
         const activeAi = getAiInstance(req);
         
         const response = await activeAi.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.5-flash",
           contents: {
             parts: [
               {
@@ -222,7 +222,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
       const activeAi = getAiInstance(req);
       const response = await activeAi.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         contents: {
           parts: [
             {
@@ -310,7 +310,7 @@ Do not generate large paragraphs of filler text.`;
 
       const activeAi = getAiInstance(req);
       const response = await activeAi.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         contents: [
           { role: "user", parts: [{ text: userMessage }] }
         ],
@@ -539,7 +539,7 @@ Rules:
 Create an absolute visual masterpiece.`;
 
         const response = await activeAi.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.5-flash",
           contents: [
             {
               role: "user",
