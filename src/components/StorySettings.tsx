@@ -146,6 +146,9 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
                 if (data.text) {
                   setStoryText(data.text);
                   setSelectedSampleId(null);
+                  if (data.warning) {
+                    alert(data.warning);
+                  }
                 } else {
                   alert(`PDF 분석 실패: ${data.error || '응답 텍스트가 비어있습니다.'}`);
                 }

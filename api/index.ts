@@ -190,17 +190,117 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
     });
   };
 
+  interface GenerateContentParams {
+    contents: any;
+    config?: any;
+  }
+
+  // Robust function to handle transient model errors (like 503 unavailable, 429 rate limits),
+  // retrying with exponential backoff, and falling back across multiple model tiers.
+  const generateContentWithFallbackAndRetry = async (
+    activeAi: any,
+    params: GenerateContentParams,
+    preferredModel: string = "gemini-3.5-flash"
+  ): Promise<{ text: string }> => {
+    const modelsToTry = [
+      preferredModel,
+      "gemini-2.5-flash",
+      "gemini-2.5-pro",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro"
+    ];
+    
+    const uniqueModels = Array.from(new Set(modelsToTry));
+    let lastError: any = null;
+    
+    for (const model of uniqueModels) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`[Gemini SDK] Trying model "${model}" (Attempt ${attempt}/3)...`);
+          const res = await activeAi.models.generateContent({
+            model: model,
+            ...params
+          });
+          
+          if (res && typeof res.text === "string" && res.text.trim().length > 0) {
+            console.log(`[Gemini SDK] Success using model "${model}" on attempt ${attempt}!`);
+            return { text: res.text };
+          }
+          
+          if (res && res.text === undefined) {
+            const textVal = res.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textVal && textVal.trim().length > 0) {
+              console.log(`[Gemini SDK] Success using model "${model}" (via path resolution) on attempt ${attempt}!`);
+              return { text: textVal };
+            }
+          }
+          
+          throw new Error("No response or empty text returned from generateContent");
+        } catch (err: any) {
+          lastError = err;
+          const msg = err.message || "";
+          console.warn(`[Gemini SDK Temp Error] Model "${model}" (Attempt ${attempt}/3) failed: ${msg}`);
+          
+          if (attempt < 3) {
+            const status = err.status || (err.error && err.error.code);
+            if (status === 503 || status === 429 || String(msg).includes("503") || String(msg).includes("429")) {
+              const backoff = attempt * 1200;
+              console.log(`[Gemini SDK Backoff] Waiting ${backoff}ms before retry...`);
+              await new Promise((resolve) => setTimeout(resolve, backoff));
+              continue;
+            }
+          }
+          break; // skip to next model if it is a fatal non-transient error
+        }
+      }
+    }
+    
+    throw lastError || new Error("All model fallback attempts failed.");
+  };
+
+  // Local summarizer fallback in case Gemini API is completely unavailable
+  const generateLocalSummaryFallback = (rawText: string): string => {
+    if (!rawText || typeof rawText !== "string" || rawText.trim().length === 0) {
+      return "PDF 파일 내용을 읽을 수 없습니다. 기본 만화 생성 기능을 사용해 주세요.";
+    }
+    
+    const blocks = rawText
+      .split(/\n+/)
+      .map(p => p.trim())
+      .filter(p => p.length > 20);
+    
+    if (blocks.length === 0) {
+      return rawText.slice(0, 800).trim();
+    }
+    
+    let summary = "";
+    for (const block of blocks) {
+      if ((summary + "\n\n" + block).length <= 1100) {
+        summary += (summary ? "\n\n" : "") + block;
+      } else {
+        break;
+      }
+    }
+    
+    if (summary.trim().length < 150) {
+      return rawText.slice(0, 1000).trim();
+    }
+    
+    return summary.trim();
+  };
+
   // API Route: Extract story text from PDF documents using Gemini Multimodal
   app.post("/api/parse-pdf", async (req, res) => {
+    let rawTextBackup = "";
     try {
       const { pdfData, rawText } = req.body;
+      rawTextBackup = rawText || "";
 
       if (rawText && typeof rawText === "string" && rawText.trim().length > 0) {
         console.log("Analyzing client-parsed PDF raw text using Gemini...");
         const activeAi = getAiInstance(req);
         
-        const response = await activeAi.models.generateContent({
-          model: "gemini-3.5-flash",
+        const response = await generateContentWithFallbackAndRetry(activeAi, {
           contents: {
             parts: [
               {
@@ -208,7 +308,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
               }
             ]
           }
-        });
+        }, "gemini-3.5-flash");
 
         const extractedText = response.text || "";
         return res.json({ text: extractedText.trim() });
@@ -221,8 +321,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
       console.log("Extracting story text from uploaded PDF using Gemini multimodal intelligence...");
 
       const activeAi = getAiInstance(req);
-      const response = await activeAi.models.generateContent({
-        model: "gemini-3.5-flash",
+      const response = await generateContentWithFallbackAndRetry(activeAi, {
         contents: {
           parts: [
             {
@@ -236,14 +335,24 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
             }
           ]
         }
-      });
+      }, "gemini-3.5-flash");
 
       const extractedText = response.text || "";
       return res.json({ text: extractedText.trim() });
     } catch (error: any) {
       console.error("Critical error in /api/parse-pdf:", error);
+      
+      if (rawTextBackup && rawTextBackup.trim().length > 10) {
+        console.warn("AI PDF parse completely failed. Invoking local summarizer fallback engine...");
+        const fallbackText = generateLocalSummaryFallback(rawTextBackup);
+        return res.json({ 
+          text: fallbackText,
+          warning: "현재 구글 AI 서비스 서버 부하가 높습니다. 대신 스마트 텍스트 파서를 활용해 줄거리를 자동 추출하였습니다."
+        });
+      }
+
       return res.status(500).json({ 
-        error: "PDF 분석 및 텍스트 추출에 실패했습니다.", 
+        error: "PDF 분석 및 텍스트 추출에 실패했습니다. (AI 모델 서비스 일시적 지연)", 
         details: error.message 
       });
     }
@@ -309,8 +418,7 @@ Do not generate large paragraphs of filler text.`;
       Custom Reference Characters: ${customCharacters ? JSON.stringify(customCharacters) : 'None'}`;
 
       const activeAi = getAiInstance(req);
-      const response = await activeAi.models.generateContent({
-        model: "gemini-3.5-flash",
+      const response = await generateContentWithFallbackAndRetry(activeAi, {
         contents: [
           { role: "user", parts: [{ text: userMessage }] }
         ],
@@ -538,8 +646,7 @@ Rules:
 
 Create an absolute visual masterpiece.`;
 
-        const response = await activeAi.models.generateContent({
-          model: "gemini-3.5-flash",
+        const response = await generateContentWithFallbackAndRetry(activeAi, {
           contents: [
             {
               role: "user",
@@ -549,7 +656,7 @@ Create an absolute visual masterpiece.`;
           config: {
             systemInstruction: systemPrompt
           }
-        });
+        }, "gemini-3.5-flash");
 
         let rawSvg = response.text || "";
         
