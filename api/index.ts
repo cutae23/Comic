@@ -304,7 +304,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
           contents: {
             parts: [
               {
-                text: `다음은 PDF 파일에서 자동으로 추출된 원문 텍스트입니다:\n\n${rawText.slice(0, 15000)}\n\n이 텍스트 내용 전체를 완벽 분석하여, 16컷 이상의 만화/웹툰 스토리보드로 세분시킬 수 있는 완성도 높은 한국어 줄거리(시놉시스)로 압축 및 재구성해 주세요. 다른 인사말이나 부가적 설명(예: '줄거리를 재구성했습니다' 등)은 일체 배제하고 오직 줄거리 본문 단락들만 한국어로 반환해 주세요. 전체 길이는 공백 제외 600자~1200자 내외로 매우 컴팩트하고 알차게 요약해 주십시오.`
+                text: `The following is raw text automatically extracted from an uploaded PDF document:\n\n${rawText.slice(0, 15000)}\n\nAnalyze this content completely and draft a premium, highly cohesive, continuous English story plot (synopsis) that can be easily decomposed into 16 or more consecutive comic strip panel outlines. Keep your response as ONLY the raw English story text. Avoid any pleasantries, framing remarks, or metadata labels. Total length of the story synopsis should be extremely concise (around 150 to 250 words) to avoid API delays.`
               }
             ]
           }
@@ -331,7 +331,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
               }
             },
             {
-              text: "이 PDF 문서 안의 이야기, 소설 줄거리, 시나리오, 콘티 또는 기획 문서를 분석하여, 16컷 이상의 만화 스토리보드로 기획하기에 가장 적합한 완성도 높은 하나의 연속적인 한국어 줄거리 형식으로 재구성해 주세요. 다른 인사말이나 설명적 코멘트는 일절 하지 말고, 오직 새롭게 구성한 줄거리 본체 내용만을 한국어로 반환해 주시기 바랍니다. 전체 길이는 공백 제외 600자~1200자 내외로 압축적인 요약문 단락으로 전사해 주십시오."
+              text: "Analyze the uploaded PDF story document and re-draft it into a continuous, cohesive, and compelling English synopsis (around 150 to 250 words total) perfect for decomposing into a comic strip panels storyboard of 16+ cuts. Do NOT include any introductory or explanatory metadata remarks. Return ONLY the English synopsis paragraphs."
             }
           ]
         }
@@ -375,40 +375,40 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
       console.log(`Generating a ${panelCount}-panel storyboard for style [${style}]`);
 
       const systemPrompt = `You are an expert webtoon/comic storyboard writer.
-Your job is to analyze the user's provided story text and decompose/outline it into a highly professional, dramatic, and logical manga storyboard comprising EXACTLY ${panelCount} consecutive, sequential panels (cuts).
+Your job is to analyze the user's provided story text and decompose/outline it into a highly professional, dramatic, and logical manga storyboard comprising EXACTLY ${panelCount} consecutive, sequential panels (cuts) in English.
 Do not generate fewer than ${panelCount} panels. The length of the 'panels' array MUST be exactly ${panelCount}.
 
 Follow these guidelines for structured generation:
-1. **Title**: Devise a creative, high-impact Korean title for the comic.
-2. **Description**: Summarize the 16+ cut story arc neatly in Korean (1-2 sentences).
-3. **Style Summary**: Summarize the artistic direction of the style in Korean based on style: [${style}]. (e.g. "샤프한 선과 화려한 네온 컬러가 강조된 현대 웹툰 스타일").
+1. **Title**: Devise a creative, high-impact English title for the comic.
+2. **Description**: Summarize the 16+ cut story arc neatly in English (1-2 sentences).
+3. **Style Summary**: Summarize the artistic direction of the style in English based on style: [${style}]. (e.g. "Sharp modern webtoon style featuring vibrant cyberpunk colors").
 4. **Characters**: Extract up to 4 major characters and describe them.
-   - You MUST identify the correct gender (male vs. female) of each character. From the Korean text, words like "청년", "그", "소년", "남자", "아저씨", "할아버지" are strictly MALE, while "처녀", "그녀", "소녀", "여자", "아가씨", "할머니" are strictly FEMALE.
+   - You MUST identify the correct gender (male vs. female) of each character.
    - For each character, produce a highly consistent 'visualDescription' in English (e.g., "handsome 23-year old young man, male, neat short dark hair, masculine jawline, determined expression, black jacket, manga webtoon style, strictly male with NO feminine features"). Ensure to explicitly state "male", "young man", "short haircut", etc., for male characters so the AI image generator never misrepresents them as women.
 5. **Panels**: Outline exactly ${panelCount} panels. Each panel must have:
    - 'panelNumber': Sequential index, starting from 1 up to ${panelCount}.
-   - 'sceneDescription': Visual illustration guideline of the scene in Korean.
-   - 'speaker': The character speaking (e.g. "철수", "민우", "나레이션", "해설")
-   - 'dialogue': Speech bubble content in Korean. Keep it conversational, emotional, and succinct.
-   - 'narration': The contextual storytelling narration in Korean (displays on top/bottom of panel).
-   - 'soundEffect': Fun Korean onomatopoeia badge (e.g. "슥-", "쾅!", "스우우우", "쿵!"). Use empty string if none.
-   - 'bgMusicMood': Suggested ambient background sound or music (in Korean).
-   - 'imagePrompt': Detailed, photorealistic/stylized ENGLISH text-to-image prompt. Important: Embed the english 'visualDescription' of characters directly into the prompt (do not just use names like "Cheolsu", write "the 15-year old schooler with messy dark hair, wearing green jacket...").
+   - 'sceneDescription': Visual illustration guideline of the scene in English.
+   - 'speaker': The character speaking (e.g. "Jack", "Luna", "Narration", "System").
+   - 'dialogue': Speech bubble content in English. Keep it conversational, emotional, and succinct.
+   - 'narration': The contextual storytelling narration in English (displays on top/bottom of panel).
+   - 'soundEffect': Fun English onomatopoeia badge (e.g. "WHOOSH!", "BANG!", "BOOM!", "SLAM!"). Use empty string if none.
+   - 'bgMusicMood': Suggested ambient background sound or music in English.
+   - 'imagePrompt': Detailed, photorealistic/stylized ENGLISH text-to-image prompt. Important: Embed the english 'visualDescription' of characters directly into the prompt (do not just use names like "Jack", write "the 23-year old young man with neat short dark hair, wearing black jacket...").
      Incorporate background elements, camera shot type (e.g., 'close-up shot', 'low-angle shot', 'establishing dynamic shot', 'side-profile extreme close-up'), lighting (e.g., 'dramatic cinematic lighting', 'soft warm sunset glow'), color grading, and style modifiers reflecting the requested comic style: [${style}]. Append style suffixes to make the rendering high fidelity. (e.g. "clean lines, vibrant colors, comic art style, detailed digital webtoon drawing --aspect_ratio 1:1"). Do not use characters like --ar or --aspect_ratio other than standard prompt flags.
 
 Be creative. Make sure the comic sequence has a robust story arc:
-- Cut 1-4: Introduction & hook (기)
-- Cut 5-8: Development & problem rising (승)
-- Cut 9-13: Main Climax & high emotion/action (전)
-- Cut 14-16+: Resolution & satisfying ending (결)
+- Cut 1-4: Introduction & hook (Beginning)
+- Cut 5-8: Development & problem rising (Middle 1)
+- Cut 9-13: Main Climax & high emotion/action (Middle 2)
+- Cut 14-16+: Resolution & satisfying ending (Ending)
 
 CRITICAL TIMEOUT AVOIDANCE RULE:
 Keep all generated text fields extremely short, succinct, and compact to minimize output token count and guarantee fast execution.
 - Ensure 'visualDescription' of characters is exactly 1-2 sentences of clean keyword-based descriptions.
-- 'sceneDescription' must be exactly 1 short sentence in Korean.
-- 'dialogue' and 'narration' must be exactly 1 short sentence or phrase per panel (under 15 words).
+- 'sceneDescription' must be exactly 1 short sentence.
+- 'dialogue' and 'narration' must be exactly 1 short sentence or phrase per panel (under 10 words).
 - 'imagePrompt' must be a concise list of high-impact visual tags (no fluff).
-Do not generate large paragraphs of filler text.`;
+Do not generate large paragraphs of filler text. All output fields MUST be in English.`;
 
       const userMessage = `Create a detailed sequential storyboard with exactly ${panelCount} panels.
       User's Story: ${storyText}
@@ -428,16 +428,16 @@ Do not generate large paragraphs of filler text.`;
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              title: { type: Type.STRING, description: "Korean title of the comic strip" },
-              description: { type: Type.STRING, description: "A summary of the comic story in Korean" },
+              title: { type: Type.STRING, description: "English title of the comic strip" },
+              description: { type: Type.STRING, description: "A summary of the comic story in English" },
               genre: { type: Type.STRING },
-              styleSummary: { type: Type.STRING, description: "Brief visual style description in Korean" },
+              styleSummary: { type: Type.STRING, description: "Brief visual style description in English" },
               characters: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    name: { type: Type.STRING, description: "Character Korean Name" },
+                    name: { type: Type.STRING, description: "Character Name in English" },
                     visualDescription: { type: Type.STRING, description: "English prompt snippet describing visual attributes for consistency" }
                   },
                   required: ["name", "visualDescription"]
@@ -450,12 +450,12 @@ Do not generate large paragraphs of filler text.`;
                   type: Type.OBJECT,
                   properties: {
                     panelNumber: { type: Type.INTEGER },
-                    sceneDescription: { type: Type.STRING, description: "Detailed scene visual action in Korean" },
-                    speaker: { type: Type.STRING, description: "Speaking character or '해설' / '나레이션'" },
-                    dialogue: { type: Type.STRING, description: "Speech bubble dialogue in Korean (can be empty string)" },
-                    narration: { type: Type.STRING, description: "Context narration in Korean (can be empty string)" },
-                    soundEffect: { type: Type.STRING, description: "Korean sound badge (e.g., '쾅!', '두근두근', '스윽') or empty string" },
-                    bgMusicMood: { type: Type.STRING, description: "Theme music mood in Korean (e.g. 긴박한 현악 피치카토)" },
+                    sceneDescription: { type: Type.STRING, description: "Detailed scene visual action in English" },
+                    speaker: { type: Type.STRING, description: "Speaking character name or 'Narration' or 'System'" },
+                    dialogue: { type: Type.STRING, description: "Speech bubble dialogue in English (can be empty string)" },
+                    narration: { type: Type.STRING, description: "Context narration in English (can be empty string)" },
+                    soundEffect: { type: Type.STRING, description: "English sound badge (e.g., 'BOOM!', 'SLAM!', 'WHOOSH!') or empty string" },
+                    bgMusicMood: { type: Type.STRING, description: "Theme music mood in English" },
                     imagePrompt: { type: Type.STRING, description: "Intense English prompt with specific character features, camera angle, and style tags. Prompt MUST NOT refer to names of characters directly. Always substitute names with their physical visual attributes." }
                   },
                   required: [
