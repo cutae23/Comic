@@ -27,6 +27,7 @@ interface StorySettingsProps {
     customCharacters: Character[];
   }) => void;
   isLoading: boolean;
+  geminiApiKey: string;
 }
 
 // Client-side PDF Parser Helpers (Bypasses Vercel's 4.5MB upload limits and 10s gateway timeouts)
@@ -66,7 +67,7 @@ const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => 
   return fullText.trim();
 };
 
-export default function StorySettings({ onGenerate, isLoading }: StorySettingsProps) {
+export default function StorySettings({ onGenerate, isLoading, geminiApiKey }: StorySettingsProps) {
   const [storyText, setStoryText] = useState('');
   const [genre, setGenre] = useState('판타지 / 모험');
   const [style, setStyle] = useState<ComicStyle>('K-Webtoon');
@@ -131,11 +132,16 @@ export default function StorySettings({ onGenerate, isLoading }: StorySettingsPr
         // Helper to POST to PDF API
         const sendParseRequest = async (payload: { pdfData?: string; rawText?: string }) => {
           try {
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (geminiApiKey) {
+              headers['x-gemini-api-key'] = geminiApiKey;
+            }
+
             const res = await fetch('/api/parse-pdf', {
               method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-              },
+              headers,
               body: JSON.stringify(payload),
             });
 

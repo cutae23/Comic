@@ -172,12 +172,13 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-  // Helper to resolve Gemini client based on secure server-side environment variables
+  // Helper to resolve Gemini client based on client-provided or secure server-side environment variables
   const getAiInstance = (req: express.Request) => {
-    const finalKey = process.env.GEMINI_API_KEY;
+    const clientKey = (req.headers["x-gemini-api-key"] as string) || req.body?.customApiKey;
+    const finalKey = clientKey || process.env.GEMINI_API_KEY;
     
     if (!finalKey) {
-      throw new Error("서버 환경 변수에 GEMINI_API_KEY가 존재하지 않습니다. AI Studio의 Settings 또는 시스템 배포 대시보드(Vercel 등)에서 환경 변수(Environmental Variable)를 등록해 주시기 바랍니다.");
+      throw new Error("Gemini API Key가 제공되지 않았습니다. 앱 상단의 'Gemini API 개인키 설정' 칸에 발급받은 API 키(AIzaSy...)를 입력해 주시거나, 서버 환경 변수에 GEMINI_API_KEY를 등록해 주세요.");
     }
     
     return new GoogleGenAI({

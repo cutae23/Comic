@@ -11,7 +11,8 @@ import {
   Trophy,
   Flame,
   LayoutGrid,
-  Key
+  Key,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ComicBook, Panel, ComicStyle } from './types';
@@ -31,6 +32,48 @@ export default function App() {
   
   // API error banner states
   const [alertInfo, setAlertInfo] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null);
+
+  // User-provided custom Gemini API Key states
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
+    return localStorage.getItem('user_gemini_api_key') || '';
+  });
+  const [showApiKeySetting, setShowApiKeySetting] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState(localStorage.getItem('user_gemini_api_key') || '');
+
+  const handleSaveApiKey = () => {
+    const trimmed = tempApiKey.trim();
+    if (trimmed && !trimmed.startsWith('AIzaSy')) {
+      alert('올바른 Gemini API Key 형식이 아닙니다. (구글 AI Studio 키는 일반적으로 "AIzaSy"로 시작하는 형태입니다.)');
+      return;
+    }
+    
+    setGeminiApiKey(trimmed);
+    if (trimmed) {
+      localStorage.setItem('user_gemini_api_key', trimmed);
+      setAlertInfo({
+        type: 'success',
+        message: '개인 Gemini API Key가 로컬에 안전하게 저장되었습니다! 이제 무제한 및 빠른 만화 시나리오 생성이 작동합니다.'
+      });
+    } else {
+      localStorage.removeItem('user_gemini_api_key');
+      setAlertInfo({
+        type: 'info',
+        message: '개인 API Key가 성공적으로 비워졌습니다. 이제 시스템 기본 서버 API Key를 적용합니다.'
+      });
+    }
+    setShowApiKeySetting(false);
+  };
+
+  const handleDeleteApiKey = () => {
+    setGeminiApiKey('');
+    setTempApiKey('');
+    localStorage.removeItem('user_gemini_api_key');
+    setAlertInfo({
+      type: 'info',
+      message: '등록된 개인 API Key가 로컬 저장소에서 깨끗하게 제거되었습니다.'
+    });
+    setShowApiKeySetting(false);
+  };
 
 
 
@@ -80,11 +123,16 @@ export default function App() {
     setIsGeneratingStoryboard(true);
     setAlertInfo(null);
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (geminiApiKey) {
+        headers['x-gemini-api-key'] = geminiApiKey;
+      }
+
       const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           storyText,
           genre,
@@ -162,11 +210,16 @@ export default function App() {
     saveComicsToStorage(updatedHistory);
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (geminiApiKey) {
+        headers['x-gemini-api-key'] = geminiApiKey;
+      }
+
       const response = await fetch('/api/generate-image', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           prompt: targetPanel.imagePrompt,
           style: activeComic.style,
@@ -398,6 +451,17 @@ export default function App() {
               </div>
             )}
 
+            <button
+              onClick={() => setShowApiKeySetting(!showApiKeySetting)}
+              className={`px-4 py-2 font-sans text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border border-black shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(20,20,20,1)] active:translate-y-[2px] active:shadow-none ${
+                geminiApiKey 
+                  ? 'bg-green-50 text-green-900 border-green-950 shadow-[2px_2px_0px_0px_rgba(20,80,20,1)]' 
+                  : 'bg-black text-white hover:bg-neutral-800'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              {geminiApiKey ? '개인 API Key: 사용 중' : 'Gemini API 개인키 등록'}
+            </button>
           </div>
 
         </div>
@@ -405,6 +469,97 @@ export default function App() {
 
       {/* Main body content container with editorial background */}
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-8 flex-1 space-y-8 bg-[#FDFCFB]">
+
+        {/* Collapsible Gemini API Key Setup Panel */}
+        <AnimatePresence>
+          {showApiKeySetting && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="border-2 border-black bg-[#FCFAF6] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] space-y-4 overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-black pb-3">
+                <div className="flex items-center gap-2">
+                  <Key className="w-5 h-5 text-black" />
+                  <h3 className="font-sans font-black text-xs uppercase tracking-wider text-black">Gemini API 개인키 설정 (Google AI Studio Key Configuration)</h3>
+                </div>
+                <button 
+                  onClick={() => setShowApiKeySetting(false)}
+                  className="text-gray-400 hover:text-black"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs font-sans">
+                <div className="space-y-2">
+                  <p className="font-bold text-black uppercase">💡 개인 API 키 사용 장점</p>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                    <li>공용 서버의 10초 타임아웃 제한 및 503 과부하 에러가 완벽히 우회됩니다.</li>
+                    <li>더 길고 정밀한 16컷 이상의 웹툰 기획 및 분석을 딜레이 없이 원활하게 생성할 수 있습니다.</li>
+                    <li>API 키는 브라우저 내부 로컬 스토리지(<code className="bg-gray-100 px-1 py-0.5 rounded font-mono text-[10px]">localStorage</code>)에만 안전하게 저장되며, 외부로 전송되거나 서버에 기록되지 않습니다.</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="font-bold text-black uppercase">🔑 1분만에 발급받고 등록하는 방법</p>
+                  <ol className="list-decimal pl-5 space-y-1 text-gray-700">
+                    <li>
+                      <a 
+                        href="https://aistudio.google.com/" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-blue-600 font-bold hover:underline"
+                      >
+                        Google AI Studio (https://aistudio.google.com)
+                      </a>
+                      에 접속 및 로그인합니다.
+                    </li>
+                    <li>좌측 상단의 <strong className="text-black">"Get API key"</strong> 버튼을 클릭합니다.</li>
+                    <li><strong className="text-black">"Create API key"</strong>를 누르고 발급받은 키(<code className="font-mono text-xs text-red-700 bg-red-50 px-1 rounded">AIzaSy...</code>)를 복사해서 하단에 붙여넣습니다.</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="border-t border-black pt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                <div className="flex-1 relative">
+                  <input
+                    type="password"
+                    placeholder="AIzaSy로 시작하는 API 키를 입력해 주세요"
+                    value={tempApiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                    className="w-full bg-white border border-black p-3 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-black placeholder:text-gray-400"
+                  />
+                  {tempApiKey && (
+                    <button
+                      onClick={() => setTempApiKey('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black text-xs font-bold font-sans"
+                    >
+                      CLEAR
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveApiKey}
+                    className="bg-black text-white px-6 py-3 font-sans text-xs font-black uppercase tracking-wider border border-black shadow-[2px_2px_0px_0px_rgba(20,20,20,0.1)] hover:bg-neutral-800 transition-all"
+                  >
+                    키 저장 및 적용
+                  </button>
+                  {geminiApiKey && (
+                    <button
+                      onClick={handleDeleteApiKey}
+                      className="bg-white text-red-600 border border-red-600 px-4 py-3 font-sans text-xs font-bold uppercase tracking-wider hover:bg-red-50 transition-all"
+                    >
+                      삭제
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         {/* API notification system alerts bar - Minimalist design */}
         <AnimatePresence>
@@ -444,6 +599,7 @@ export default function App() {
               <StorySettings 
                 onGenerate={handleGenerateStoryboard}
                 isLoading={isGeneratingStoryboard}
+                geminiApiKey={geminiApiKey}
               />
               <ComicHistory 
                 comics={comics}
